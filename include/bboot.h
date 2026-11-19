@@ -45,5 +45,10 @@ int cfg_is_option(const char s, const char o);
 void *boot_aos_zipkick(const char *zipdata, unsigned long ziplen, int config, unsigned long *avail_ret);
 void amigaone_init(void);
 void pegasos2_init(void);
+int e500_init(void *fdt);
+void e500_get_initrd(unsigned long *start, unsigned long *len);
+char *e500_bootargs(void);
+unsigned long e500_place_fdt(unsigned long avail);
+void e500_start_loader(void *entry, const char *id, void *kicklist, void *info, char *args);
 
 #endif

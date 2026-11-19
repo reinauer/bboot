@@ -35,8 +35,10 @@ static struct console_output_driver prom_consout = {
 int start(unsigned long r3, unsigned long r4, unsigned long r5,
           unsigned long r6, unsigned long r7, unsigned long r8)
 {
-    int of = 0;
-    if (r8 == 1024 || !r5) {
+    int of = 0, e500 = 0;
+    if (r6 == 0x45504150 && !e500_init((void *)r3)) {
+        e500 = 1;   /* ePAPR entry from QEMU's e500 machines */
+    } else if (r8 == 1024 || !r5) {
         amigaone_init();
     } else {
         of = 1;
@@ -70,7 +72,9 @@ int start(unsigned long r3, unsigned long r4, unsigned long r5,
 
     if (cfg_is_option('A', 'b')) {
         unsigned long initrd_addr, initrd_len;
-        if (of) {
+        if (e500) {
+            e500_get_initrd(&initrd_addr, &initrd_len);
+        } else if (of) {
             initrd_addr = r3;
             initrd_len = r4;
             if (!initrd_addr) {
@@ -97,7 +101,14 @@ int start(unsigned long r3, unsigned long r4, unsigned long r5,
         if (!kicklist) goto error;
 
         char *args = "";
-        if (of) {
+        if (e500) {
+            args = e500_bootargs();
+            avail = e500_place_fdt(avail);
+            if (!avail) {
+                puts("No memory for the device tree");
+                goto error;
+            }
+        } else if (of) {
             char *propname;
             prom_handle ph = prom_finddevice("/options");
             if (ph != PROM_INVALID_HANDLE) {
@@ -119,7 +130,10 @@ int start(unsigned long r3, unsigned long r4, unsigned long r5,
             args = (char *)r6;
         }
         VLVL(3, puts("Starting exec"));
-        ((loader_func)brd.exec_addr)("AmigaOS4", kicklist, brd.info, args);
+        if (e500)
+            e500_start_loader(brd.exec_addr, "AmigaOS4", kicklist, brd.info, args);
+        else
+            ((loader_func)brd.exec_addr)("AmigaOS4", kicklist, brd.info, args);
     }
 
     puts("Booting failed, exiting.");

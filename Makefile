@@ -41,6 +41,7 @@ SOURCES=\
   bboot.c \
   boot_aos.c \
   brd_amigaone.c \
+  brd_e500.c \
   brd_pegasos2.c \
   cfg.c \
   drivers/console.c \
