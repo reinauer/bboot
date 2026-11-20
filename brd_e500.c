@@ -140,9 +140,10 @@ int e500_init(void *dt)
         bootargs[sizeof(bootargs) - 1] = '\0';
     }
 
-    /* The soc node is named for the CCSR base */
-    p = fdt_prop("soc", "reg", &len);
-    ccsr_base = p ? fdt_num(p, len >= 16 ? 2 : 1) : 0xe0000000;
+    /* CCSR is the soc node's ranges: one cell of child address, two of
+     * parent address and one of size */
+    p = fdt_prop("soc", "ranges", &len);
+    ccsr_base = p && len == 16 ? fdt_num(p + 4, 2) : 0xe0000000;
 
     /* All memory up to 2 GiB, as U-Boot maps it, in place of QEMU's one
      * entry for the first few MiB: entry 0 is the one we run in, so it's
