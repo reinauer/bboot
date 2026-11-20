@@ -115,7 +115,9 @@ static void *e500_claim(void *addr, unsigned int size)
 }
 
 static unsigned long initrd_start, initrd_end;
-static char *bootargs = "";
+/* A copy of the bootargs: the loader copies them to the kernel only after
+ * putting the kernel where QEMU put the tree */
+static char bootargs[256];
 
 int e500_init(void *dt)
 {
@@ -133,7 +135,10 @@ int e500_init(void *dt)
     p = fdt_prop("chosen", "linux,initrd-end", &len);
     if (p) initrd_end = fdt_num(p, len / 4);
     p = fdt_prop("chosen", "bootargs", &len);
-    if (p && len > 1) bootargs = (char *)p;
+    if (p && len > 1) {
+        strncpy(bootargs, (const char *)p, sizeof(bootargs) - 1);
+        bootargs[sizeof(bootargs) - 1] = '\0';
+    }
 
     /* The soc node is named for the CCSR base */
     p = fdt_prop("soc", "reg", &len);
