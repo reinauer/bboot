@@ -222,6 +222,20 @@ static int log2_up(uint64_t v)
     return l;
 }
 
+/* An inbound window, as U-Boot sets PIW1: PCI addresses from 0 to local
+ * memory, so that bus masters (the LSI SCSI SCRIPTS, ...) reach RAM */
+#define PIWAR_EN_PF_LOCAL_SNOOP 0xa0f55000
+
+static void pcie_inbound(uint64_t size)
+{
+    volatile uint32_t *iw = (volatile uint32_t *)(PCIE1_REGS + 0xde0);
+    iw[0] = 0;                                          /* PITAR1 */
+    iw[2] = 0;                                          /* PIWBAR1 */
+    iw[3] = 0;                                          /* PIWBEAR1 */
+    iw[4] = PIWAR_EN_PF_LOCAL_SNOOP | (log2_up(size) - 1);  /* PIWAR1 */
+    asm volatile("sync; isync");
+}
+
 static void *e500_claim(void *addr, unsigned int size)
 {
     return (unsigned long)addr + size < bd.bd.bi_memsize ? addr : NULL;
@@ -278,6 +292,7 @@ int e500_init(void *dt)
     pcie_outbound(1, 0xc40000000ULL, 0xe0000000, 29, POWAR_MEM);
     pcie_outbound(2, 0xfffc20000ULL, 0, 16, POWAR_IO);
     pcie_assign(0xe0000000, 0xffffffff, 0x1000, 0x10000);
+    pcie_inbound(memsize);
 
     brd.claim = &e500_claim;
     brd.setup = NULL;
