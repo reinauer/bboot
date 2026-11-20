@@ -205,7 +205,8 @@ unsigned long e500_place_fdt(unsigned long avail)
 
 /* Call the loader on a stack near the top of memory, where U-Boot's is: the
  * loader uses the memory below its own code at 16 MiB, where QEMU starts
- * the stack, as scratch space */
+ * the stack, as scratch space.  The kernel expects SPE enabled in the MSR
+ * from the start: its SPE unavailable handler calls SPE code itself. */
 void e500_start_loader(void *entry, const char *id, void *kicklist, void *info, char *args)
 {
     unsigned long sp = ROUND_DOWN(bd.bd.bi_memsize - 0x10000, 16);
@@ -213,6 +214,10 @@ void e500_start_loader(void *entry, const char *id, void *kicklist, void *info, 
     register unsigned long r4 asm("r4") = (unsigned long)kicklist;
     register unsigned long r5 asm("r5") = (unsigned long)info;
     register unsigned long r6 asm("r6") = (unsigned long)args;
+    unsigned long msr;
+    asm volatile("mfmsr %0" : "=r"(msr));
+    msr |= 0x02000000;                      /* MSR[SPE] */
+    asm volatile("mtmsr %0; isync" :: "r"(msr));
     asm volatile("mtctr %4; mr 1,%5; li 0,0; stw 0,0(1); bctrl"
                  : "+r"(r3), "+r"(r4), "+r"(r5), "+r"(r6)
                  : "r"(entry), "r"(sp - 16)
