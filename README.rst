@@ -70,6 +70,23 @@ For booting amigaone with QEMU before version 10.0 where -kernel and
 On amigaone, firmware ROM can be added with -bios but it's bypassed
 with bboot and not needed. Running BBoot from U-Boot is not supported.
 
+BBoot also boots the AmigaOne A1222 Kickstart on QEMU's e500 machines,
+such as the a1222 machine, which take it with -kernel the same way:
+
+.. code-block:: shell
+
+  qemu-system-ppc -M a1222 -m 1G -kernel bboot -initrd Kickstart.zip
+
+build.sh builds bboot with the ppc-amigaos cross compiler, soft-float,
+because the A1222's e500 cores have no classic FPU.
+
+mkkickzip.py makes the Kickstart.zip from a Kickstart directory, such as
+SYS:Kickstart copied from an AmigaOS installation, checks that the files
+the first configuration in Kicklayout loads are there, and stores them
+with the names Kicklayout gives them. With -m it adds modules to the
+archive and to the first configuration, and with -x it unpacks an
+archive. See mkkickzip.py -h.
+
 Apart from the primary usage above, the same bboot binary also works
 with the Pegasos2 ROM firmware which can be useful when debugging PCI
 or using vfio-pci with QEMU on Linux host to pass through graphics
@@ -119,6 +136,7 @@ if a file is not found in Kickstart.zip check that its name matches
 what is in Kicklayout literally with no upper/lower case differences.
 In particular SFSFileSystem is sometimes written as SFSFilesystem so
 either Kicklayout needs to be edited or the file renamed.
+mkkickzip.py does that renaming when it makes the archive.
 
 Source
 ======

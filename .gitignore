@@ -4,3 +4,5 @@ bboot
 *.o
 a1222-kick/
 Kickstart*.zip
+sd.img
+run_a1222.sh
