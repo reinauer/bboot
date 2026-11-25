@@ -70,6 +70,13 @@ For booting amigaone with QEMU before version 10.0 where -kernel and
 On amigaone, firmware ROM can be added with -bios but it's bypassed
 with bboot and not needed. Running BBoot from U-Boot is not supported.
 
+BBoot also boots the AmigaOne A1222 Kickstart on QEMU's e500 machines,
+such as the a1222 machine, which take it with -kernel the same way:
+
+.. code-block:: shell
+
+  qemu-system-ppc -M a1222 -m 1G -kernel bboot -initrd Kickstart.zip
+
 Apart from the primary usage above, the same bboot binary also works
 with the Pegasos2 ROM firmware which can be useful when debugging PCI
 or using vfio-pci with QEMU on Linux host to pass through graphics
