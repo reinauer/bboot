@@ -77,6 +77,9 @@ such as the a1222 machine, which take it with -kernel the same way:
 
   qemu-system-ppc -M a1222 -m 1G -kernel bboot -initrd Kickstart.zip
 
+build.sh builds bboot with the ppc-amigaos cross compiler, soft-float,
+because the A1222's e500 cores have no classic FPU.
+
 mkkickzip.py makes the Kickstart.zip from a Kickstart directory, such as
 SYS:Kickstart copied from an AmigaOS installation, checks that the files
 the first configuration in Kicklayout loads are there, and stores them
