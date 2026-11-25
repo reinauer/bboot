@@ -87,6 +87,17 @@ with the names Kicklayout gives them. With -m it adds modules to the
 archive and to the first configuration, and with -x it unpacks an
 archive. See mkkickzip.py -h.
 
+The A1222's AmigaOS 4.1 recovery image keeps its Kickstart on an NGFS
+partition that no tool outside AmigaOS reads.
+a1222-recovery-kickstart.py makes Kickstart-a1222.zip from that image,
+A1222-Emergency-4G-AAATech-FW8-2024-12-28.img (MD5
+b43d29cd1c84ac13028be389f6495c80), by copying the files from where they
+are in it and checking each against its SHA-256:
+
+.. code-block:: shell
+
+  ./a1222-recovery-kickstart.py A1222-Emergency-4G-AAATech-FW8-2024-12-28.img
+
 Apart from the primary usage above, the same bboot binary also works
 with the Pegasos2 ROM firmware which can be useful when debugging PCI
 or using vfio-pci with QEMU on Linux host to pass through graphics
