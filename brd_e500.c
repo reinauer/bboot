@@ -109,6 +109,133 @@ static void tlb1_write(int esel, uint32_t va, uint64_t pa, int tsize, uint32_t w
                  :: "r"(mas0), "r"(mas1), "r"(mas2), "r"(mas3), "r"(mas7) : "memory");
 }
 
+/* Local access windows: the A1222's AmigaOS kernel finds its PCIe
+ * controllers by them, so set them up as U-Boot does, at the 36-bit
+ * addresses the kernel has built in for the first controller, where QEMU's
+ * a1222 machine has its PCI controller */
+#define CCSR_VA 0xffe00000
+#define LAW_TRGT_PCIE1 0x02
+#define LAW_TRGT_DDR 0x0f
+
+static void law_set(int n, uint64_t base, int log2size, int target)
+{
+    volatile uint32_t *law = (volatile uint32_t *)(CCSR_VA + 0xc08 + n * 0x20);
+    law[0] = base >> 12;                                /* LAWBARn */
+    law[2] = 0x80000000 | target << 20 | (log2size - 1);  /* LAWARn */
+    asm volatile("sync; isync");
+}
+
+/* An outbound window of the first PCIe controller, as U-Boot sets them:
+ * the kernel takes them as it finds them */
+#define PCIE1_REGS (CCSR_VA + 0xa000)
+#define POWAR_EN 0x80000000
+#define POWAR_MEM 0x00044000        /* memory read and write */
+#define POWAR_IO 0x00088000         /* I/O read and write */
+
+static void pcie_outbound(int n, uint64_t cpu, uint64_t bus, int log2size, uint32_t type)
+{
+    volatile uint32_t *ow = (volatile uint32_t *)(PCIE1_REGS + 0xc00 + n * 0x20);
+    ow[0] = bus >> 12;                                  /* POTARn */
+    ow[1] = bus >> 44;                                  /* POTEARn */
+    ow[2] = cpu >> 12;                                  /* POWBARn */
+    ow[4] = POWAR_EN | type | (log2size - 1);           /* POWARn */
+    asm volatile("sync; isync");
+}
+
+/* PCI configuration through the controller: the address register is big
+ * endian, the data register little endian */
+static uint32_t pcie_cfg_read(int devfn, int reg)
+{
+    volatile uint32_t *cfg = (volatile uint32_t *)PCIE1_REGS;
+    cfg[0] = 0x80000000 | devfn << 8 | (reg & 0xfc);
+    asm volatile("sync");
+    return __builtin_bswap32(cfg[1]);
+}
+
+static void pcie_cfg_write(int devfn, int reg, uint32_t val)
+{
+    volatile uint32_t *cfg = (volatile uint32_t *)PCIE1_REGS;
+    cfg[0] = 0x80000000 | devfn << 8 | (reg & 0xfc);
+    asm volatile("sync");
+    cfg[1] = __builtin_bswap32(val);
+    asm volatile("sync");
+}
+
+/* Give the devices on the bus their memory and I/O ranges in the windows,
+ * and enable them, as U-Boot does: the kernel keeps what it finds.  Each
+ * range is aligned to its size, the bigger ones first. */
+static void pcie_assign(uint32_t mem, uint32_t mem_end, uint32_t io, uint32_t io_end)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        for (int devfn = 8; devfn < 256; devfn++) {
+            uint32_t id = pcie_cfg_read(devfn, 0);
+            if ((id & 0xffff) == 0xffff) {
+                if (!(devfn & 7)) devfn += 7;
+                continue;
+            }
+            int multi = pcie_cfg_read(devfn, 0xc) & 0x00800000;
+            if (((pcie_cfg_read(devfn, 0xc) >> 16) & 0x7f) == 0) {
+                for (int reg = 0x10; reg <= 0x24; reg += 4) {
+                    uint32_t old = pcie_cfg_read(devfn, reg);
+                    pcie_cfg_write(devfn, reg, 0xffffffff);
+                    uint32_t v = pcie_cfg_read(devfn, reg);
+                    int is64 = !(v & 1) && (v & 6) == 4;
+                    if (v == 0 || v == 0xffffffff) {
+                        pcie_cfg_write(devfn, reg, old);
+                    } else if (v & 1) {
+                        uint32_t size = (~(v & 0xfffc) + 1) & 0xffff;
+                        uint32_t base = ROUND_UP(io, size);
+                        if (pass == 1 && base + size <= io_end) {
+                            pcie_cfg_write(devfn, reg, base);
+                            io = base + size;
+                        } else {
+                            pcie_cfg_write(devfn, reg, old);
+                        }
+                    } else {
+                        uint32_t size = ~(v & 0xfffffff0) + 1;
+                        uint32_t base = ROUND_UP(mem, size);
+                        /* The big ones (frame buffers) in the first pass */
+                        if ((pass == 0) == (size >= 0x100000) && base + size <= mem_end && base >= mem) {
+                            pcie_cfg_write(devfn, reg, base);
+                            mem = base + size;
+                        } else {
+                            pcie_cfg_write(devfn, reg, old);
+                        }
+                    }
+                    if (is64) {
+                        reg += 4;
+                        pcie_cfg_write(devfn, reg, 0);
+                    }
+                }
+                if (pass == 1)
+                    pcie_cfg_write(devfn, 4, pcie_cfg_read(devfn, 4) | 7); /* I/O, memory, master */
+            }
+            if (!(devfn & 7) && !multi) devfn += 7;
+        }
+    }
+}
+
+static int log2_up(uint64_t v)
+{
+    int l = 0;
+    while ((1ULL << l) < v) l++;
+    return l;
+}
+
+/* An inbound window, as U-Boot sets PIW1: PCI addresses from 0 to local
+ * memory, so that bus masters (the LSI SCSI SCRIPTS, ...) reach RAM */
+#define PIWAR_EN_PF_LOCAL_SNOOP 0xa0f55000
+
+static void pcie_inbound(uint64_t size)
+{
+    volatile uint32_t *iw = (volatile uint32_t *)(PCIE1_REGS + 0xde0);
+    iw[0] = 0;                                          /* PITAR1 */
+    iw[2] = 0;                                          /* PIWBAR1 */
+    iw[3] = 0;                                          /* PIWBEAR1 */
+    iw[4] = PIWAR_EN_PF_LOCAL_SNOOP | (log2_up(size) - 1);  /* PIWAR1 */
+    asm volatile("sync; isync");
+}
+
 static void *e500_claim(void *addr, unsigned int size)
 {
     return (unsigned long)addr + size < bd.bd.bi_memsize ? addr : NULL;
@@ -158,6 +285,14 @@ int e500_init(void *dt)
     /* The loader prints its errors to the DUART at 0xfe11c500, where it is
      * on the P5020 of the X5000 */
     tlb1_write(4, 0xfe11c000, ccsr_base + 0x4000, 2, 0xa);  /* 4 KiB, I G */
+
+    law_set(0, 0xc40000000ULL, 29, LAW_TRGT_PCIE1);    /* 512 MiB memory */
+    law_set(1, 0xfffc20000ULL, 16, LAW_TRGT_PCIE1);    /* 64 KiB I/O */
+    law_set(2, 0, log2_up(memsize), LAW_TRGT_DDR);
+    pcie_outbound(1, 0xc40000000ULL, 0xe0000000, 29, POWAR_MEM);
+    pcie_outbound(2, 0xfffc20000ULL, 0, 16, POWAR_IO);
+    pcie_assign(0xe0000000, 0xffffffff, 0x1000, 0x10000);
+    pcie_inbound(memsize);
 
     brd.claim = &e500_claim;
     brd.setup = NULL;
