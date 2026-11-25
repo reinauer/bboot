@@ -1,0 +1,52 @@
+name: BBoot
+
+on:
+  push:
+    branches: [a1222]
+    tags: ['a1222-*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src \
+            stefanreinauer/amiga-gcc:gcc-v16.2-ppc ./build.sh
+          strings bboot | grep 'VER: BBoot'
+
+      - name: Package
+        run: |
+          name=bboot-a1222
+          mkdir "$name"
+          cp bboot mkkickzip.py a1222-recovery-kickstart.py README.rst \
+             COPYING "$name"/
+          git describe --tags --always > "$name/VERSION.txt"
+          zip -r "$name.zip" "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bboot-a1222
+          path: bboot-a1222.zip
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/a1222-')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: bboot-a1222
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: bboot-a1222.zip
