@@ -77,6 +77,13 @@ such as the a1222 machine, which take it with -kernel the same way:
 
   qemu-system-ppc -M a1222 -m 1G -kernel bboot -initrd Kickstart.zip
 
+mkkickzip.py makes the Kickstart.zip from a Kickstart directory, such as
+SYS:Kickstart copied from an AmigaOS installation, checks that the files
+the first configuration in Kicklayout loads are there, and stores them
+with the names Kicklayout gives them. With -m it adds modules to the
+archive and to the first configuration, and with -x it unpacks an
+archive. See mkkickzip.py -h.
+
 Apart from the primary usage above, the same bboot binary also works
 with the Pegasos2 ROM firmware which can be useful when debugging PCI
 or using vfio-pci with QEMU on Linux host to pass through graphics
@@ -126,6 +133,7 @@ if a file is not found in Kickstart.zip check that its name matches
 what is in Kicklayout literally with no upper/lower case differences.
 In particular SFSFileSystem is sometimes written as SFSFilesystem so
 either Kicklayout needs to be edited or the file renamed.
+mkkickzip.py does that renaming when it makes the archive.
 
 Source
 ======
